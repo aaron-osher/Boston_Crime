@@ -1,0 +1,269 @@
+---
+title: "20-exploration"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+
+# Mutate Crime Names
+```{r}
+# Mutate the Crime Names to make it easier to read
+crimes <- crimes %>% 
+  mutate(crime_type = case_when(
+    crime_type == "crime_against_person" ~ "Crime Against Person",
+    crime_type == "motor_vehicle_crime" ~ "Motor Vehicle Crime",
+    crime_type == "petty_crime" ~ "Petty Crime",
+    crime_type == "property_crime" ~ "Property Crime",
+    crime_type == "violent_crime" ~ "Violent Crime",
+    crime_type == "weapons_related" ~ "Weapons Related",
+    crime_type == "white_collar" ~ "White Collar")) %>% 
+  mutate()
+```
+
+# General Situation
+## Most Common Crime Types
+By Crime Number
+```{r most common crime types}
+crime_by_types <- crimes %>% 
+  group_by(crime_type) %>% 
+  summarize(crime_type_N = n()) %>% 
+  arrange(desc(crime_type_N))
+
+ggplot(crime_by_types, aes(x = reorder(crime_type, crime_type_N), y = crime_type_N)) +
+  geom_bar(stat = "identity", fill = "#CC3333") +
+  ylim(0, 90000)+
+  labs(title = "Most frequent crime types in Boston", x = "Crime Type", y = "Crime Number")+
+  geom_text(aes(label= floor(crime_type_N)), hjust=-0.1, col = "black")+
+  theme_minimal() +
+  theme(element_blank(), axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+  coord_flip()
+ggsave("Frequent Crime Types.png", path = "graphs")
+```
+
+By Ratio
+```{r most common crime types by ratio}
+crime_by_types <- crimes %>%
+  group_by(crime_type) %>%
+  summarize(crime_type_N = n()) %>%
+  arrange(desc(crime_type_N))
+
+crime_by_types_d <- crime_by_types %>% 
+  mutate(total = sum(crime_type_N)) %>% 
+  mutate(dens = crime_type_N/total)
+
+ggplot(crime_by_types_d, aes(x = reorder(crime_type, dens), y = dens)) +
+  geom_bar(stat = "identity", fill = "#CC3333") +
+  labs(title = "Most Frequent Crime Types in Boston", x = "Crime Type", y = "Crime Number") +
+  geom_text(aes(label= round(dens, 3)), hjust=-0.1, col = "black") +
+  theme_minimal() +
+  theme(element_blank(), axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  scale_color_brewer(palette = "Dark2") +
+  coord_flip()
+```
+
+## Most frequent offense groups in Boston
+```{r offense group distribution}
+crime1 <- crimes %>% 
+  group_by(crime_type, offense_code_group) %>% 
+  summarize(offense_code_group_N = n()) %>% 
+  left_join(crime_by_types, by = "crime_type") %>% 
+  arrange(desc(offense_code_group_N))
+
+ggplot(crime1[0:12, ], 
+       aes(x = reorder(offense_code_group, offense_code_group_N), 
+           y = offense_code_group_N, fill = crime_type))+
+  geom_bar(stat = "identity") +
+  geom_text(aes(label= offense_code_group_N), hjust=1, size=3.5, col = "white")+
+  scale_fill_brewer(palette = "Oranges", direction = -1, limits = (c("Property Crime", "Crime Against Person", "Petty Crime", "Violent Crime", "White Collar", "Motor Vehicle Crime", "Weapons Related")))+
+  coord_flip()+
+  theme_minimal() +
+  theme(element_blank(), axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+  labs(title = "Most frequent offense groups in Boston", x = "Offense Group", y = "Number")
+
+ggsave("Frequent Offense Groups.png", path = "graphs")
+```
+
+## Geom Distribution
+```{r crime loc distribution}
+crime_by_loc <- crimes %>% 
+  filter(long < -10) %>% 
+  filter(lat > 10) %>% 
+  filter(crime_type %in% c("Property Crime", "Crime Against Person", "Petty Crime", "Violent Crime")) %>% 
+  select(lat:crime_type)
+
+ggplot(crime_by_loc, aes(x= long, y = lat, col = crime_type)) +
+  geom_point(alpha = 0.1, size = 0.001)+
+  theme_minimal() +
+  theme(element_blank())
+
+ggsave("Crime by Location.png", path = "graphs")
+```
+
+
+# Districts Exploration
+
+## Weekday and Crime Ratio
+```{r, weekday dataframe}
+districts <- crimes %>% 
+  filter(district == "Roxbury" | district == "Jamaica Plain" | district == "Dorchester" | district == "Mattapan") %>% 
+  arrange(district)
+
+weekday<- districts %>% 
+  group_by(crime_type, day_of_week, district) %>% 
+  summarise(N = n()) %>% 
+  left_join(pop, by = "district") %>% 
+  mutate(crime_ratio = N/district_pop)
+```
+
+```{r weekday plot by crime ratio}
+ggplot(weekday, aes(x = day_of_week, y = crime_ratio, col = crime_type)) +
+  geom_line(aes(group = crime_type))+
+  scale_x_continuous(breaks = 1:7, labels = c("Mon", "Tue", "Wed", "Thurs", "Fri", "Sat", "Sun")) + 
+  theme_minimal()+
+  labs(title = "Crime by Weekday", x = "Day of the Week", y = "Crime Ratio") +
+  scale_colour_brewer(palette = "Oranges", limits = rev(c("Property Crime", "Crime Against Person", "Petty Crime", "Violent Crime")))+
+  facet_wrap(~ district)+
+  theme(axis.text.x = element_text(angle = 60))
+
+ggsave("Crime by Weekday.png", path = "graphs")
+```
+
+## Hour of the day and Crime Ratio
+```{r, hour}
+weekday<- districts %>% 
+  group_by(crime_type, hour, district) %>% 
+  summarise(N = n())  %>% 
+  left_join(pop, by = "district") %>% 
+  mutate(crime_ratio = N/district_pop)
+
+ggplot(weekday, aes(x = hour, y = crime_ratio, col = crime_type)) +
+  geom_smooth(aes(group = crime_type), se = FALSE)+
+  theme_minimal()+
+  labs(title = "Crime by Hour", x = "Hour of the day", y = "Crime Ratio") +
+  facet_wrap(~ district)+
+  scale_color_brewer(palette = "Oranges", limits = rev(c("Property Crime", "Crime Against Person", "Petty Crime", "Violent Crime")))+
+
+ggsave("Crime By Hour.png", path = "graphs")
+```
+
+
+## Crime Trend over time
+
+```{r trend for all crime}
+month <- districts %>% 
+  mutate(time = paste(year, month, sep = "_")) %>% 
+  filter(crime_type == "Property Crime")
+  
+month <- month %>% 
+  group_by(time, district) %>% 
+  summarise(N = n()) %>% 
+  left_join(pop, by = "district") %>% 
+  mutate(crime_ratio = N/district_pop)
+```
+
+```{r trend for all crime plot}
+ggplot(month, aes(x = time, y = crime_ratio)) +
+  geom_line(aes(group = 1))+
+  geom_smooth(aes(group = 1), se = FALSE)+
+  theme_minimal()+
+  labs(title = "Crime Trend Over Time", x = "Time", y = "Crime Ratio") +
+  facet_wrap(~ district, scales = "free_x")+
+  scale_color_brewer(palette = "Oranges", limits = rev(c("Property Crime", "Crime Against Person", "Petty Crime", "Violent Crime"))) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+ggsave("Crime Trend All.png", path = "graphs")
+```
+
+## Crime Trend for different crime types
+```{r Trend for different crime types}
+date <- districts %>% 
+  mutate(date = date(occurred_on_date),
+         quarter = quarter(occurred_on_date),
+         time = paste(year, quarter, sep = "_")) %>% 
+  filter(time != "2015_2", time != "2019_4")
+  
+date <- date %>% 
+  group_by(time, district, crime_type) %>% 
+  summarise(N = n()) %>% 
+  left_join(pop, by = "district") %>% 
+  mutate(crime_ratio = N/district_pop)
+```
+
+```{r Trend for different crime types plot}
+ggplot(date, aes(x = time, y = crime_ratio, col = crime_type)) +
+  geom_smooth(aes(group = crime_type), se = FALSE)+
+  theme_minimal()+
+  labs(title = "Crime Trend by Crime Type", x = "Time", y = "Crime Ratio") +
+  facet_wrap(~ district, ncol = 4, scales = "free_x")+
+  scale_color_brewer(palette = "Oranges", limits = rev(c("Property Crime", "Crime Against Person", "Petty Crime", "Violent Crime"))) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+ggsave("Crime Trend By Crime Type.png", path = "graphs")
+```
+
+
+## Crime Ratios and income
+
+```{r income}
+crime_by_income <- crimes %>% 
+  filter(crime_type == "Property Crime") %>% 
+  group_by(district) %>% 
+  summarise(N = n()) %>% 
+  left_join(pop, by = "district") %>% 
+  mutate(crime_ratio = N/district_pop)
+  
+ crime_by_income <- crime_by_income %>% 
+   left_join(income, by = "district") %>% 
+   select(-x1)
+ 
+ crime_by_income <-crime_by_income %>% 
+   group_by(district) %>% 
+   summarise(N = mean(N),
+             crime_ratio = mean(crime_ratio),
+     district_pop = sum(total_population),
+             total_income = sum(aggregate_income_in_the_past_12_months_in_2017_inflation_adjusted_dollars)) %>% 
+   mutate(per_capita_income = total_income/district_pop)
+```
+
+
+```{r}
+install.packages("gghighlight")
+library(gghighlight)
+```
+
+```{r income plot}
+ggplot(crime_by_income, aes(x = crime_ratio, y = per_capita_income))+
+  geom_point()+
+  gghighlight(crime_ratio > 0.001,  label_key = district)+
+  labs(title = "Relationship between Crime Ratio and Per Capita Income", x = "Crime Ratio", y = "Per Capita Income")+
+  theme_minimal()
+
+ggsave("Crime Ratio and Income.png", path = "graphs")
+```
+
+# Roxbury Racial Demographics
+```{r Roxbury Racial Demographics}
+race %>% 
+  filter(district == "Roxbury") %>% 
+  pivot_longer(-district, names_to = "race", values_to = "pop") %>% 
+  mutate(pop = pop/sum(pop)) %>% 
+  ggplot(aes(x = reorder(race, -pop), y = pop)) +
+  geom_bar(stat = "identity", fill = "#CC3333") +
+  geom_text(aes(label= round(pop/sum(pop), 3)), hjust=.5, vjust=1.8, col = "white") +
+  geom_text(x = 1.88, y = .41, label = "<= 30,018 total") +
+  labs(title = "Roxbury District Racial Demographics", x = "Race", y = "Population Percent") +
+  theme_minimal() +
+  theme(element_blank(), axis.ticks.x=element_blank())
+
+race %>% 
+  filter(district == "Roxbury") %>% 
+  mutate(sum(district_race_asian, district_race_black, district_race_hispanic, district_race_white, district_race_other))
+
+ggsave("Roxbury Racial Demo.png", path = "graphs")
+```
+

@@ -1,0 +1,270 @@
+---
+title: "10-import"
+output: html_document
+---
+# Load data
+```{r, message=FALSE}
+library(tidyverse)
+library(janitor)
+library(lubridate)
+library(readr)
+library(readxl)
+importdata <- read_csv("data/Crime Incident Reports (August 2015 - To Date)-Analyze Boston.csv")
+```
+
+```{r}
+data <- clean_names(importdata)
+data <- data %>% mutate(offense_code = as.factor(str_remove(offense_code, "^0+")))
+data <- data %>% mutate(
+  offense_code_group = as.factor(offense_code_group),
+  offense_description = as.factor(offense_description),
+  district = as.factor(district),
+  day_of_week = as.factor(day_of_week))
+data <- data %>% mutate(
+  district = case_when(district == "A1" ~ "Downtown & Charlestown",
+                       district == "A15" ~ "Downtown & Charlestown",
+                       district == "A7" ~ "East Boston",
+                       district == "B2" ~ "Roxbury",
+                       district == "B3" ~ "Mattapan",
+                       district == "C6" ~ "South Boston",
+                       district == "C11" ~ "Dorchester",
+                       district == "D4" ~ "South End",
+                       district == "D14" ~ "Brighton",
+                       district == "E5" ~ "West Roxbury",
+                       district == "E13" ~ "Jamaica Plain",
+                       district == "E18" ~ "Hyde Park"),
+  day_of_week = case_when(day_of_week == "Monday" ~ 1, day_of_week == "Tuesday" ~ 2, day_of_week == "Wednesday" ~ 3, day_of_week == "Thursday" ~ 4, day_of_week == "Friday" ~ 5, day_of_week == "Saturday" ~ 6, day_of_week == "Sunday" ~7))
+data <-data %>%
+  filter(!is.na(district))
+```
+
+```{r}
+crimes <- data %>%
+  filter(!offense_code_group %in% c(NA, "Recovered Stolen Property", "Search Warrants", "Service", "Towed", "Property Found", "Property Lost", "Property Related Damage", "Phone Call Complaints", "Medical Assistance", "Missing Person Located", "Motor Vehicle Accident Response", "Investigate Person", "INVESTIGATE PERSON", "Investigate Property", "Fire Related Reports", "Aircraft", "Auto Theft Recovery", "Ballistics", "Confidence Games", "Firearm Discovery",  "Warrant Arrests", "Landlord/Tenant Disputes", "Police Service Incidents", "Harbor Related Incidents", "Prisoner Related Incidents"), !offense_description %in% c("OTHER OFFENSE", "INVESTIGATION FOR ANOTHER AGENCY", "REPORT AFFECTING OTHER DEPTS.", "VIOLATION - CITY ORDINANCE CONSTRUCTION PERMIT", "DANGEROUS OR HAZARDOUS CONDITION"))
+
+crimes <- crimes %>%
+  mutate(crime_type = case_when(
+    offense_code_group %in% c("Manslaughter", "Homicide", "Robbery", "Aggravated Assault", "Simple Assault") ~ "violent_crime", 
+    offense_code_group %in% c("Burglary - No Property Taken", "Commercial Burglary", "Larceny", "Larceny From Motor Vehicle", "Other Burglary", "Residential Burglary", "Arson", "Auto Theft", "Embezzlement", "Vandalism", "HOME INVASION") ~ "property_crime", 
+    offense_code_group %in% c("Fraud", "Counterfeiting", "Biological Threat", "Gambling") ~ "white_collar", 
+    offense_code_group %in% c("Evading Fare", "Drug Violation", "License Violation", "Liquor Violation", "Violations", "Disorderly Conduct", "Assembly or Gathering Violations") ~ "petty_crime", 
+    offense_code_group %in% c("Operating Under the Influence", "License Plate Related Incidents") ~ "motor_vehicle_crime", 
+    offense_code_group %in% c("Explosives", "Firearm Violations", "Bomb Hoax") ~ "weapons_related", 
+    offense_code_group %in% c("HUMAN TRAFFICKING", "HUMAN TRAFFICKING - INVOLUNTARY SERVITUDE", "Prostitution", "Criminal Harassment", "Harassment", "Verbal Disputes", "Restraining Order Violations", "Offenses Against Child / Family", "Restraining Order Violations", "Missing Person Reported") ~ "crime_against_person", 
+    offense_description %in% c("ABDUCTION - INTICING", "CUSTODIAL KIDNAPPING", "INTIMIDATING WITNESS", "KIDNAPPING - ENTICING OR ATTEMPTED", "KIDNAPPING/CUSTODIAL KIDNAPPING", "THREATS TO DO BODILY HARM") ~ "crime_against_person", 
+    offense_description %in% c("POSSESSION OF BURGLARIOUS TOOLS", "PROPERTY - CONCEALING LEASED") ~ "property_crime", 
+    offense_description %in% c("EXTORTION OR BLACKMAIL") ~ "white_collar", 
+    offense_description %in% c("OBSCENE MATERIALS - PORNOGRAPHY", "TRESPASSING", "VIOLATION - CITY ORDINANCE", "VIOLATION - HAWKER AND PEDDLER", "ANIMAL ABUSE") ~ "petty_crime", 
+    offense_description %in% c("VAL - VIOLATION OF AUTO LAW - OTHER") ~ "motor_vehicle_crime", 
+    offense_description %in% c("WEAPON - OTHER - OTHER VIOLATION") ~ "weapons_related"))
+```
+```{r}
+crimes <- crimes[!duplicated(crimes),]
+```
+
+
+
+
+
+# Add population information
+```{r}
+pop <- read_excel("data/boston_neighborhood_demographics_2013-2017.xlsx",
+                  sheet = "Age", skip = 2)
+```
+
+```{r pop_clean_data}
+pop <- clean_names(pop)
+pop <- pop %>% arrange(desc(total_population)) %>% 
+  select (x1, total_population) %>% 
+  filter(!is.na(total_population)) %>% 
+  mutate(district = case_when(x1 == "Harbor Islands" ~ "None",
+                   x1 == "South Boston Waterfront" ~ "South Boston",
+                   x1 == "Longwood" ~ "None",
+                   x1 == "West End" ~ "Downtown & Charlestown",
+                   x1 == "North End" ~ "Downtown & Charlestown",
+                   x1 == "Beacon Hill" ~ "Downtown & Charlestown",
+                   x1 == "Mission Hill" ~ "Roxbury",
+                   x1 == "Downtown" ~ "Downtown & Charlestown",
+                   x1 == "Back Bay" ~ "South End",
+                   x1 == "Charlestown" ~ "Downtown & Charlestown",
+                   x1 == "Allston" ~ "Brighton",
+                   x1 == "Mattapan" ~ "Mattapan",
+                   x1 == "Roslindale" ~ "West Roxbury",
+                   x1 == "South End" ~ "South End",
+                   x1 == "Fenway" ~ "South End",
+                   x1 == "West Roxbury" ~ "West Roxbury",
+                   x1 == "South Boston" ~ "South Boston",
+                   x1 == "Hyde Park" ~ "Hyde Park",
+                   x1 == "Jamaica Plain" ~ "Jamaica Plain",
+                   x1 == "East Boston" ~ "East Boston",
+                   x1 == "Brighton" ~ "Brighton",
+                   x1 == "Roxbury" ~ "Roxbury",
+                   x1 == "Dorchester" ~ "Dorchester",
+                   x1 == "Boston" ~ "None",
+                   x1 == "Massachusetts" ~ "None",
+                   x1 == "United States" ~ "None")) %>% 
+  arrange(district)
+```
+
+```{r pop sum by district}
+pop <- pop %>% 
+  group_by(district) %>% 
+  summarise(district_pop = sum(total_population*.00001),
+            total_district_pop = sum(total_population)
+            )
+```
+
+
+# Import race data
+```{r message=FALSE}
+race <- read_excel("data/boston_neighborhood_demographics_2013-2017.xlsx", 
+    sheet = "Race and Ethnicity", skip = 3)
+```
+
+```{r}
+race <- clean_names(race)
+
+race <- race %>% arrange(desc(total_population)) %>% 
+  filter(!is.na(total_population)) %>% 
+  mutate(district = case_when(x1 == "Harbor Islands" ~ "None",
+                   x1 == "South Boston Waterfront" ~ "South Boston",
+                   x1 == "Longwood" ~ "None",
+                   x1 == "West End" ~ "Downtown & Charlestown",
+                   x1 == "North End" ~ "Downtown & Charlestown",
+                   x1 == "Beacon Hill" ~ "Downtown & Charlestown",
+                   x1 == "Mission Hill" ~ "Roxbury",
+                   x1 == "Downtown" ~ "Downtown & Charlestown",
+                   x1 == "Back Bay" ~ "South End",
+                   x1 == "Charlestown" ~ "Downtown & Charlestown",
+                   x1 == "Allston" ~ "Brighton",
+                   x1 == "Mattapan" ~ "Mattapan",
+                   x1 == "Roslindale" ~ "West Roxbury",
+                   x1 == "South End" ~ "South End",
+                   x1 == "Fenway" ~ "South End",
+                   x1 == "West Roxbury" ~ "West Roxbury",
+                   x1 == "South Boston" ~ "South Boston",
+                   x1 == "Hyde Park" ~ "Hyde Park",
+                   x1 == "Jamaica Plain" ~ "Jamaica Plain",
+                   x1 == "East Boston" ~ "East Boston",
+                   x1 == "Brighton" ~ "Brighton",
+                   x1 == "Roxbury" ~ "Roxbury",
+                   x1 == "Dorchester" ~ "Dorchester",
+                   x1 == "Boston" ~ "None",
+                   x1 == "Massachusetts" ~ "None",
+                   x1 == "United States" ~ "None")) %>% 
+  arrange(district)
+
+race <- race %>% 
+  group_by(district) %>% 
+  summarise(district_race_white = sum(non_hispanic_white_alone),
+            district_race_black = sum(non_hispanic_black_african_american_alone),
+            district_race_asian = sum(non_hispanic_asian_alone),
+            district_race_hispanic = sum(hispanic_or_latino),
+            district_race_other = sum(other_races_or_multiple_races)
+            )
+```
+
+
+## Importing educational data
+```{r message=FALSE}
+edu <- read_excel("data/boston_neighborhood_demographics_2013-2017.xlsx",
+                  sheet = "Educational Attainment", skip = 2)
+```
+
+```{r}
+edu <- clean_names(edu)
+
+edu <- edu[1:(nrow(edu)-3),]
+
+edu <- edu %>% 
+  mutate(district = case_when(x1 == "Harbor Islands" ~ "None",
+                   x1 == "South Boston Waterfront" ~ "South Boston",
+                   x1 == "Longwood" ~ "None",
+                   x1 == "West End" ~ "Downtown & Charlestown",
+                   x1 == "North End" ~ "Downtown & Charlestown",
+                   x1 == "Beacon Hill" ~ "Downtown & Charlestown",
+                   x1 == "Mission Hill" ~ "Roxbury",
+                   x1 == "Downtown" ~ "Downtown & Charlestown",
+                   x1 == "Back Bay" ~ "South End",
+                   x1 == "Charlestown" ~ "Downtown & Charlestown",
+                   x1 == "Allston" ~ "Brighton",
+                   x1 == "Mattapan" ~ "Mattapan",
+                   x1 == "Roslindale" ~ "West Roxbury",
+                   x1 == "South End" ~ "South End",
+                   x1 == "Fenway" ~ "South End",
+                   x1 == "West Roxbury" ~ "West Roxbury",
+                   x1 == "South Boston" ~ "South Boston",
+                   x1 == "Hyde Park" ~ "Hyde Park",
+                   x1 == "Jamaica Plain" ~ "Jamaica Plain",
+                   x1 == "East Boston" ~ "East Boston",
+                   x1 == "Brighton" ~ "Brighton",
+                   x1 == "Roxbury" ~ "Roxbury",
+                   x1 == "Dorchester" ~ "Dorchester",
+                   x1 == "Boston" ~ "None",
+                   x1 == "Massachusetts" ~ "None",
+                   x1 == "United States" ~ "None")) %>% 
+  arrange(district)
+
+edu <- edu %>% 
+  group_by(district) %>% 
+  summarise(total_population_25_years_and_over = sum(total_population_25_years_and_over),
+            less_than_high_school = sum(less_than_high_school),
+            high_school_graduate = sum(high_school_graduate),
+            some_college = sum(some_college),
+            bachelors_degree_or_more = sum(bachelors_degree_or_more)
+            )
+```
+
+
+## Importing income data
+```{r per_capita_income}
+income <- read_excel("data/boston_neighborhood_demographics_2013-2017.xlsx", 
+    sheet = "Per Capita Income", skip = 2, 
+    n_max = 27)
+income <- clean_names(income)
+income <- income %>%
+  mutate(district = case_when(x1 == "Harbor Islands" ~ "None",
+                   x1 == "South Boston Waterfront" ~ "South Boston",
+                   x1 == "Longwood" ~ "None",
+                   x1 == "West End" ~ "Downtown & Charlestown",
+                   x1 == "North End" ~ "Downtown & Charlestown",
+                   x1 == "Beacon Hill" ~ "Downtown & Charlestown",
+                   x1 == "Mission Hill" ~ "Roxbury",
+                   x1 == "Downtown" ~ "Downtown & Charlestown",
+                   x1 == "Back Bay" ~ "South End",
+                   x1 == "Charlestown" ~ "Downtown & Charlestown",
+                   x1 == "Allston" ~ "Brighton",
+                   x1 == "Mattapan" ~ "Mattapan",
+                   x1 == "Roslindale" ~ "West Roxbury",
+                   x1 == "South End" ~ "South End",
+                   x1 == "Fenway" ~ "South End",
+                   x1 == "West Roxbury" ~ "West Roxbury",
+                   x1 == "South Boston" ~ "South Boston",
+                   x1 == "Hyde Park" ~ "Hyde Park",
+                   x1 == "Jamaica Plain" ~ "Jamaica Plain",
+                   x1 == "East Boston" ~ "East Boston",
+                   x1 == "Brighton" ~ "Brighton",
+                   x1 == "Roxbury" ~ "Roxbury",
+                   x1 == "Dorchester" ~ "Dorchester",
+                   x1 == "Boston" ~ "None",
+                   x1 == "Massachusetts" ~ "None",
+                   x1 == "United States" ~ "None"))
+```
+
+
+
+# Joining edu, pop, and race dataframes
+```{r}
+demos <- pop %>% 
+  left_join(edu, by = "district") %>%
+  left_join(race, by = "district")
+```
+
+
+#Joining demographic data with crime dataframe
+```{r}
+crime_demos <- crimes %>% 
+  left_join(demos, by = "district")
+```
+
+
